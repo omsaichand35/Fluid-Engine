@@ -1,3 +1,5 @@
 pygame~=2.6.1
 numpy~=2.3.5
 numba~=0.63.1
+opencv-python~=4.10.0.84
+mediapipe~=0.10.14

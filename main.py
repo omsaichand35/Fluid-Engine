@@ -5,6 +5,7 @@ from app.window import WindowApp
 from cv.camera import Camera
 from cv.hand_tracker import HandTracker
 from cv.gesture_recognizer import GestureRecognizer
+from cv.gesture_types import GestureType
 from controller.jutsu_controller import JutsuController
 
 def cv_loop(app):
@@ -34,8 +35,20 @@ def cv_loop(app):
         # Draw for debug window
         display_frame = frame.copy()
         display_frame = tracker.draw_landmarks(display_frame, results)
-        cv2.putText(display_frame, f"Jutsu: {gesture.name}", (10, 50), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        
+        if results.multi_hand_landmarks and gesture != GestureType.NONE:
+            first_hand = results.multi_hand_landmarks[0]
+            wrist = first_hand.landmark[0]
+            wrist_x = int(wrist.x * display_frame.shape[1])
+            wrist_y = int(wrist.y * display_frame.shape[0])
+            
+            # Draw prominent label right near the user's hand!
+            cv2.putText(display_frame, gesture.name + "!", (wrist_x - 50, wrist_y - 50), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3, cv2.LINE_AA)
+
+        top_text = f"Casting: {gesture.name}" if gesture != GestureType.NONE else "Scanning for signs..."
+        cv2.putText(display_frame, top_text, (10, 50), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
         cv2.imshow("Ninja Vision", display_frame)
         
         # We need a small waitKey to process OpenCV GUI events

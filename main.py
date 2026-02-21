@@ -1,6 +1,13 @@
 import threading
 import cv2
 import time
+import sys
+from pathlib import Path
+
+# Ensure local app package is on the path (so core/engine modules resolve)
+ROOT = Path(__file__).parent.resolve()
+sys.path.append(str(ROOT / "app"))
+
 from app.window import WindowApp
 from cv.camera import Camera
 from cv.hand_tracker import HandTracker

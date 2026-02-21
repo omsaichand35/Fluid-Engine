@@ -54,6 +54,26 @@ class AdvectionSolver:
             g.density.data, u, v, dt
         )
 
+        if hasattr(g, "temperature"):
+            g.temperature.data = advect_bilinear_jit(
+                g.temperature.data, u, v, dt
+            )
+
+        if hasattr(g, "fuel"):
+            g.fuel.data = advect_bilinear_jit(
+                g.fuel.data, u, v, dt
+            )
+
+        if hasattr(g, "oxygen"):
+            g.oxygen.data = advect_bilinear_jit(
+                g.oxygen.data, u, v, dt
+            )
+
+        if hasattr(g, "soot"):
+            g.soot.data = advect_bilinear_jit(
+                g.soot.data, u, v, dt
+            )
+
         g.velocity.u = advect_bilinear_jit(
             u, u, v, dt
         )

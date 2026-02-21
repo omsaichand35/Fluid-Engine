@@ -16,8 +16,8 @@ class WindowApp:
         self.clock = pygame.time.Clock()
         self.timestep = Timestep(self.clock, TARGET_FPS)
 
-        self.engine = Engine()
-        self.renderer = PygameRenderer(self.screen, self.engine.grid)
+        self.engine = Engine(grid_size=96)
+        self.renderer = PygameRenderer(self.screen, self.engine.grid, self.engine)
 
         self.cell_size = self.screen.get_width() // self.engine.grid.size
         self.mouse = MouseInteractor(self.engine.grid)
@@ -42,6 +42,23 @@ class WindowApp:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_f:
+                    self.engine.set_element_mode("fire")
+                elif event.key == pygame.K_w:
+                    self.engine.set_element_mode("wind")
+                elif event.key == pygame.K_s:
+                    self.engine.set_element_mode("smoke")
+                elif event.key == pygame.K_q:
+                    self.engine.set_element_mode("water")
+                elif event.key == pygame.K_UP:
+                    self.engine.adjust_fire_power(0.25)
+                elif event.key == pygame.K_DOWN:
+                    self.engine.adjust_fire_power(-0.25)
+                elif event.key == pygame.K_LEFT:
+                    self.engine.adjust_water_power(-0.25)
+                elif event.key == pygame.K_RIGHT:
+                    self.engine.adjust_water_power(0.25)
 
     def update(self):
         dt = self.timestep.update()

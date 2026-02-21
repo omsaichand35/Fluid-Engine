@@ -20,3 +20,11 @@ class ObstacleBuilder:
         self.grid.velocity.u[i, j] = 0
         self.grid.velocity.v[i, j] = 0
         self.grid.density.data[i, j] = 0
+        if hasattr(self.grid, "temperature"):
+            self.grid.temperature.data[i, j] = 0
+        if hasattr(self.grid, "fuel"):
+            self.grid.fuel.data[i, j] = 0
+        if hasattr(self.grid, "oxygen"):
+            self.grid.oxygen.data[i, j] = 1.0
+        if hasattr(self.grid, "soot"):
+            self.grid.soot.data[i, j] = 0

@@ -11,14 +11,15 @@ sys.path.append(str(ROOT / "app"))
 from app.window import WindowApp
 from cv.camera import Camera
 from cv.hand_tracker import HandTracker
-from cv.gesture_recognizer import GestureRecognizer
-from cv.gesture_types import GestureType
+from cv.gesture_recognizer import GestureRecognizer, GestureSequenceRecognizer
+from cv.gesture_types import Gesture
 from controller.jutsu_controller import JutsuController
 
 def cv_loop(app):
     camera = Camera()
     tracker = HandTracker()
     recognizer = GestureRecognizer()
+    seq_recognizer = GestureSequenceRecognizer(timeout=3.0)
 
     # Wait for the engine to be initialized by WindowApp
     while not hasattr(app, 'engine'):
@@ -33,29 +34,37 @@ def cv_loop(app):
         if frame is None:
             continue
 
-        # Process hand tracking
-        results = tracker.process_frame(frame)
+        # Process hand tracking using direct solutions.hands API
+        results = tracker.detect(frame)
         
         # Recognize gesture
         gesture = recognizer.recognize(results)
+        seq_recognizer.add_gesture(gesture)
+        sequence = seq_recognizer.get_sequence()
         
         # Draw for debug window
         display_frame = frame.copy()
         display_frame = tracker.draw_landmarks(display_frame, results)
         
-        if results.multi_hand_landmarks and gesture != GestureType.NONE:
+        if results and results.multi_hand_landmarks and gesture != Gesture.NONE and gesture != Gesture.UNKNOWN:
             first_hand = results.multi_hand_landmarks[0]
             wrist = first_hand.landmark[0]
             wrist_x = int(wrist.x * display_frame.shape[1])
             wrist_y = int(wrist.y * display_frame.shape[0])
             
             # Draw prominent label right near the user's hand!
-            cv2.putText(display_frame, gesture.name + "!", (wrist_x - 50, wrist_y - 50), 
+            cv2.putText(display_frame, str(gesture) + "!", (wrist_x - 50, wrist_y - 50), 
                         cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3, cv2.LINE_AA)
 
-        top_text = f"Casting: {gesture.name}" if gesture != GestureType.NONE else "Scanning for signs..."
-        cv2.putText(display_frame, top_text, (10, 50), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        # Draw Combo Sequence Output
+        seq_text = "Sequence: " + " -> ".join([str(g) for g in sequence])
+        cv2.putText(display_frame, seq_text, (10, 50), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2, cv2.LINE_AA)
+                    
+        top_text = f"Current Sign: {gesture}" if gesture != Gesture.NONE else "Scanning for signs..."
+        cv2.putText(display_frame, top_text, (10, 85), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 200, 0), 2, cv2.LINE_AA)
+        
         cv2.imshow("Ninja Vision", display_frame)
         
         # We need a small waitKey to process OpenCV GUI events
@@ -64,7 +73,9 @@ def cv_loop(app):
             break
 
         # Execute jutsu
-        controller.process_gesture(gesture)
+        if controller.process_sequence(sequence):
+            # Clear sequence after a successful jutsu combo execution
+            seq_recognizer.clear()
 
     camera.release()
     cv2.destroyAllWindows()

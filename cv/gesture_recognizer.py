@@ -1,124 +1,126 @@
 import time
 import math
 import sys
-from pathlib import Path
 from collections import deque
+from pathlib import Path
 
 # Ensure project root is on path when run as a script
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from cv.gesture_types import GestureType
+from cv.gesture_types import Gesture
 
 class GestureRecognizer:
     def __init__(self):
-        # Store a history of wrist positions to detect rotation
         self.wrist_history = deque(maxlen=20)
         self.last_rotation_time = 0
 
     def get_distance(self, p1, p2):
         return math.hypot(p1.x - p2.x, p1.y - p2.y)
 
-    def is_circular_motion(self, current_time):
-        """
-        Check if the wrist has moved in a circular path recently
-        """
-        if len(self.wrist_history) < 15:
-            return False
+    def fingers_up(self, hand_landmarks):
+        up = []
+        tips = [4, 8, 12, 16, 20]
+        pips = [3, 6, 10, 14, 18]
+        
+        # Thumb
+        if hand_landmarks[tips[0]].x < hand_landmarks[pips[0]].x:
+            up.append(1)
+        else:
+            up.append(0)
             
-        if current_time - self.last_rotation_time < 1.0:
-            return False
+        # Other fingers
+        for i in range(1, 5):
+            if hand_landmarks[tips[i]].y < hand_landmarks[pips[i]].y:
+                up.append(1)
+            else:
+                up.append(0)
+                
+        return up
 
-        # Calculate bounding box of wrist movement
-        min_x = min(p.x for p in self.wrist_history)
-        max_x = max(p.x for p in self.wrist_history)
-        min_y = min(p.y for p in self.wrist_history)
-        max_y = max(p.y for p in self.wrist_history)
+    def detect_single_hand(self, hand_landmarks):
+        up = self.fingers_up(hand_landmarks)
         
-        width = max_x - min_x
-        height = max_y - min_y
-        
-        # Calculate total distance traveled vs straight line distance
-        path_length = sum(self.get_distance(self.wrist_history[i], self.wrist_history[i-1]) 
-                          for i in range(1, len(self.wrist_history)))
-        direct_distance = self.get_distance(self.wrist_history[0], self.wrist_history[-1])
-        
-        # A circle has path_length roughly pi * diameter. 
-        # Path length should be much larger than direct distance for circular or oscillating motion.
-        # Also need significant movement (width and height > 0.05)
-        if width > 0.05 and height > 0.05 and path_length > 2.0 * direct_distance and path_length > 0.3:
-            self.last_rotation_time = current_time
-            self.wrist_history.clear()
-            return True
+        # index & middle pointing up -> DOG
+        if up[1] == 1 and up[2] == 1 and up[3] == 0 and up[4] == 0:
+            return Gesture.DOG
             
-        return False
+        # All fingers folded -> RASENGAN (close fist)
+        if sum(up) == 0:
+            return Gesture.RASENGAN
+            
+        # All fingers open -> FIREBALL or AURA
+        if sum(up) >= 4:
+            spread = self.get_distance(hand_landmarks[8], hand_landmarks[20])
+            if spread > 0.25:
+                return Gesture.AURA
+            else:
+                return Gesture.FIREBALL
+                
+        return Gesture.UNKNOWN
 
-    def recognize(self, results) -> GestureType:
-        """
-        Converts mediapipe hand landmarks into a GestureType.
-        Implementation of Naruto Hand Signs for Jutsus.
-        """
-        if not results.multi_hand_landmarks:
-            self.wrist_history.clear()
-            return GestureType.NONE
-
-        hand_landmarks = results.multi_hand_landmarks[0].landmark
+    def detect_two_hand_seal(self, hand1, hand2):
+        wrist1, wrist2 = hand1[0], hand2[0]
+        index1, index2 = hand1[8], hand2[8]
+        thumb1, thumb2 = hand1[4], hand2[4]
         
-        # Track wrist history for Rotation (Wind Tornado)
+        palms_touching = self.get_distance(wrist1, wrist2) < 0.15
+        index_fingers_touch = self.get_distance(index1, index2) < 0.1
+        thumbs_touch = self.get_distance(thumb1, thumb2) < 0.1
+        
+        triangle_shape = thumbs_touch and index_fingers_touch and not palms_touching
+
+        if palms_touching:
+            return Gesture.RAM
+            
+        if triangle_shape:
+            return Gesture.FIREBALL
+            
+        # Stub complex ones
+        if thumbs_touch and not index_fingers_touch:
+            return Gesture.TIGER
+            
+        return Gesture.UNKNOWN
+
+    def recognize(self, results) -> str:
+        """
+        Converts mediapipe hand landmarks into a Gesture constant.
+        """
+        if not results or not results.multi_hand_landmarks:
+            return Gesture.NONE
+            
+        if len(results.multi_hand_landmarks) == 2:
+            return self.detect_two_hand_seal(
+                results.multi_hand_landmarks[0].landmark,
+                results.multi_hand_landmarks[1].landmark
+            )
+        else:
+            return self.detect_single_hand(
+                results.multi_hand_landmarks[0].landmark
+            )
+
+
+class GestureSequenceRecognizer:
+    def __init__(self, timeout=2.0):
+        self.sequence = []
+        self.last_gesture_time = time.time()
+        self.timeout = timeout
+        
+    def add_gesture(self, gesture):
         current_time = time.time()
-        wrist = hand_landmarks[0]
-        self.wrist_history.append(wrist)
-        
-        # Check motion-based gesture first
-        if self.is_circular_motion(current_time):
-            return GestureType.WIND
-
-        # Key Landmarks Reference
-        # Thumb: Tip 4, PIP 3
-        # Index: Tip 8, PIP 6
-        # Middle: Tip 12, PIP 10
-        # Ring: Tip 16, PIP 14
-        # Pinky: Tip 20, PIP 18
-
-        index_tip, index_pip = hand_landmarks[8], hand_landmarks[6]
-        middle_tip, middle_pip = hand_landmarks[12], hand_landmarks[10]
-        ring_tip, ring_pip = hand_landmarks[16], hand_landmarks[14]
-        pinky_tip, pinky_pip = hand_landmarks[20], hand_landmarks[18]
-        thumb_tip = hand_landmarks[4]
-
-        # Fingers folded state based on y position relative to PIP
-        # Note: In MediaPipe, y grows downwards. So tip.y > pip.y means finger is folded DOWN.
-        # However, this depends on hand orientation (if pointing up). 
-        # We assume standard hand upright pose for these rules.
-        index_folded = index_tip.y > index_pip.y
-        middle_folded = middle_tip.y > middle_pip.y
-        ring_folded = ring_tip.y > ring_pip.y
-        pinky_folded = pinky_tip.y > pinky_pip.y
-        
-        index_open = index_tip.y < index_pip.y
-        middle_open = middle_tip.y < middle_pip.y
-        ring_open = ring_tip.y < ring_pip.y
-        pinky_open = pinky_tip.y < pinky_pip.y
-
-        # 1. Closed Fist (Rasengan)
-        if index_folded and middle_folded and ring_folded and pinky_folded:
-            # Check thumb is close to palm or other fingers (roughly folded)
-            dist_thumb_index = self.get_distance(thumb_tip, index_tip)
-            if dist_thumb_index < 0.15:
-                return GestureType.RASENGAN
-
-        # 2. Open Palm Forward (Fireball) & 5. Chakra Aura (Wide Open)
-        if index_open and middle_open and ring_open and pinky_open:
-            # Check spread between index and pinky to differentiate Aura and Fireball
-            spread = self.get_distance(index_tip, pinky_tip)
+        if current_time - self.last_gesture_time > self.timeout:
+            self.sequence.clear()
             
-            if spread > 0.25: # Wide open
-                return GestureType.AURA
-            else: # Fingers together but open
-                return GestureType.FIREBALL
-
-        # 3. Two Finger Point (Chidori)
-        if index_open and middle_open and ring_folded and pinky_folded:
-            return GestureType.CHIDORI
-
-        return GestureType.NONE
+        if gesture != Gesture.NONE and gesture != Gesture.UNKNOWN:
+            if not self.sequence or self.sequence[-1] != gesture:
+                self.sequence.append(gesture)
+                self.last_gesture_time = current_time
+                
+    def get_sequence(self):
+        current_time = time.time()
+        if current_time - self.last_gesture_time > self.timeout:
+            self.sequence.clear()
+        return self.sequence
+        
+    def clear(self):
+        self.sequence.clear()
